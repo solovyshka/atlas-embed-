@@ -12,6 +12,11 @@ from .training import (
     WeightMonitor,
     fit,
 )
+from .transfer import (
+    TransferReport,
+    initialize_single_target_from_pretrained,
+    set_single_target_backbone_trainable,
+)
 
 __all__ = [
     "Callback",
@@ -22,7 +27,10 @@ __all__ = [
     "MultiTargetRegionalResidualScorer",
     "ParameterStats",
     "RegionalResidualScorer",
+    "TransferReport",
     "WeightMonitor",
     "count_trainable_parameters",
     "fit",
+    "initialize_single_target_from_pretrained",
+    "set_single_target_backbone_trainable",
 ]

@@ -116,6 +116,44 @@ print(embedding_stats[-1])
 `ModelCheckpoint` сохраняет переносимые CPU-снимки `state_dict` в файлы
 `checkpoints/epoch_0005.pt`, `checkpoints/epoch_0010.pt` и так далее.
 
+## Перенос single-target модели на другой таргет
+
+Можно предобучить модель на одном таргете, а затем использовать её embedding
+и скрытый backbone для другого таргета:
+
+```python
+import torch
+
+from regional_score import (
+    RegionalResidualScorer,
+    initialize_single_target_from_pretrained,
+    set_single_target_backbone_trainable,
+)
+
+model = RegionalResidualScorer()
+report = initialize_single_target_from_pretrained(
+    model,
+    "checkpoints/epoch_0020.pt",
+    freeze_backbone=True,
+)
+
+# Optimizer создаётся после заморозки: сначала обучаются новая голова и alpha.
+optimizer = torch.optim.AdamW(
+    (parameter for parameter in model.parameters() if parameter.requires_grad),
+    lr=1e-3,
+)
+
+# После нескольких эпох можно разморозить backbone и пересоздать optimizer
+# с меньшим learning rate.
+set_single_target_backbone_trainable(model, True)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+```
+
+По умолчанию последний `Linear 8 → 1` и `alpha` не переносятся, поскольку они
+специфичны для таргета. Для близких таргетов их можно включить параметрами
+`transfer_head=True` и `transfer_alpha=True`. Размеры embedding и скрытых слоёв
+исходной и новой моделей должны совпадать.
+
 ## Несколько таргетов
 
 Для совместного обучения горизонтов используется общий региональный backbone
