@@ -161,10 +161,30 @@ class MaskedMultiTargetBCELoss(nn.Module):
         return losses.masked_fill(observed_count == 0, torch.nan)
 
     def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
-        losses = self.per_target(logits, targets)
-        active = ~torch.isnan(losses)
-        active_weights = self.target_weights.to(logits) * active
-        weight_sum = active_weights.sum()
-        if weight_sum.item() == 0:
+        if logits.shape != targets.shape:
+            raise ValueError("logits and targets must have the same shape")
+        if logits.ndim != 2 or logits.shape[1] != len(self.target_names):
+            raise ValueError(
+                f"logits must have shape [batch, {len(self.target_names)}]"
+            )
+
+        observed = ~torch.isnan(targets)
+        safe_targets = torch.nan_to_num(targets)
+        element_losses = F.binary_cross_entropy_with_logits(
+            logits,
+            safe_targets,
+            reduction="none",
+        )
+        weighted_observed = (
+            observed * self.target_weights.to(device=logits.device)
+        )
+        observation_weight = weighted_observed.sum()
+        if observation_weight.item() == 0:
             raise ValueError("batch contains no weighted target observations")
-        return (torch.nan_to_num(losses) * active_weights).sum() / weight_sum
+        return (element_losses * weighted_observed).sum() / observation_weight
+
+    def aggregation_weight(self, targets: Tensor) -> Tensor:
+        """Вернуть знаменатель loss для корректной агрегации между батчами."""
+        observed = ~torch.isnan(targets)
+        weights = self.target_weights.to(device=targets.device)
+        return (observed * weights).sum()

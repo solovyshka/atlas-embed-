@@ -188,7 +188,7 @@ def _run_epoch(
     training = optimizer is not None
     model.train(training)
     total_loss = 0.0
-    total_examples = 0
+    total_weight = 0.0
 
     context = torch.enable_grad() if training else torch.inference_mode()
     with context:
@@ -212,13 +212,23 @@ def _run_epoch(
                     nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 optimizer.step()
 
-            batch_size = targets.shape[0]
-            total_loss += loss.detach().item() * batch_size
-            total_examples += batch_size
+            aggregation_weight = getattr(criterion, "aggregation_weight", None)
+            if callable(aggregation_weight):
+                batch_weight_value = aggregation_weight(targets)
+                batch_weight = float(
+                    batch_weight_value.detach().item()
+                    if isinstance(batch_weight_value, Tensor)
+                    else batch_weight_value
+                )
+            else:
+                batch_weight = float(targets.shape[0])
 
-    if total_examples == 0:
+            total_loss += loss.detach().item() * batch_weight
+            total_weight += batch_weight
+
+    if total_weight == 0:
         raise ValueError("data loader must contain at least one example")
-    return total_loss / total_examples
+    return total_loss / total_weight
 
 
 def fit(
