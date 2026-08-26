@@ -36,6 +36,21 @@ final_logit = base_logit + alpha * region_delta_logit
 
 ## Запуск
 
+Проект зафиксирован на Python `3.12.11` и PyTorch `2.13.0` с CUDA 13.0.
+На Windows окружение воспроизводится через `uv`:
+
+```powershell
+winget install --id astral-sh.uv --exact --source winget
+uv sync --extra dev
+uv run region-model-info
+uv run pytest
+```
+
+`uv` автоматически установит нужную версию Python из `.python-version` и
+создаст `.venv`.
+
+Альтернативная ручная установка:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -64,6 +79,70 @@ loss = criterion(logits, targets)
 loss.backward()
 optimizer.step()
 ```
+
+Полный цикл обучения ожидает, что `train_loader` и `val_loader` возвращают
+батчи `(base_logits, region_ids, targets)`:
+
+```python
+from regional_score import EarlyStopping, ModelCheckpoint, WeightMonitor, fit
+
+early_stopping = EarlyStopping(
+    patience=5,
+    min_delta=1e-4,
+    restore_best_weights=True,
+)
+weight_monitor = WeightMonitor(["embedding.weight", "alpha"])
+checkpoint = ModelCheckpoint("checkpoints", every_n_epochs=5)
+
+history = fit(
+    model=model,
+    train_batches=train_loader,
+    val_batches=val_loader,
+    optimizer=optimizer,
+    criterion=criterion,
+    epochs=100,
+    callbacks=[early_stopping, weight_monitor, checkpoint],
+    device="cuda",
+    max_grad_norm=1.0,
+)
+
+embedding_stats = weight_monitor.history["embedding.weight"]
+print(early_stopping.best_epoch, early_stopping.best_value)
+print(embedding_stats[-1])
+```
+
+`WeightMonitor` отдельно хранит для каждого параметра среднее, стандартное
+отклонение, L2-норму и максимальное абсолютное значение после каждой эпохи.
+`ModelCheckpoint` сохраняет переносимые CPU-снимки `state_dict` в файлы
+`checkpoints/epoch_0005.pt`, `checkpoints/epoch_0010.pt` и так далее.
+
+## Несколько таргетов
+
+Для совместного обучения горизонтов используется общий региональный backbone
+и независимые головы с отдельными `alpha`:
+
+```python
+from regional_score import (
+    MaskedMultiTargetBCELoss,
+    MultiTargetRegionalResidualScorer,
+)
+
+target_names = ("30@3", "30@6", "30@9")
+model = MultiTargetRegionalResidualScorer(target_names)
+criterion = MaskedMultiTargetBCELoss(
+    target_names,
+    target_weights={"30@3": 1.0, "30@6": 1.0, "30@9": 1.5},
+)
+```
+
+Для этой модели `base_logits` и `targets` имеют форму `[batch, 3]`. Таргеты,
+которые ещё не созрели на дату среза, должны быть отмечены `NaN`: loss их
+игнорирует, а не считает отрицательным классом. Веса и поправки можно
+мониторить отдельно по именам `target_heads.30@3.weight`, `alpha.30@3` и т. д.
+
+Для полностью независимого переобучения нужно создать по одному
+`RegionalResidualScorer` на каждый таргет и вызвать `fit` на соответствующей
+выборке. Это полезный baseline для проверки, даёт ли shared backbone выигрыш.
 
 Для обучения основной скор должен быть рассчитан out-of-fold либо зафиксирован
 до обучения региональной ветки. Иначе региональная модель может получить
