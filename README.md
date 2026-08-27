@@ -1,38 +1,39 @@
 # Региональные эмбеддинги для скоринга
 
-Компактная PyTorch-модель добавляет региональную поправку к логиту основной
-скоринговой модели:
+Компактная PyTorch-модель использует `score_dubai` как основной скор и
+добавляет к его логиту региональную поправку:
 
 ```text
-final_logit = base_logit + alpha * region_delta_logit
+final_logit = logit(score_dubai) + alpha * region_delta_logit
 ```
 
-Модель учитывает регион прописки, рождения и подачи заявления. Одна общая
-таблица эмбеддингов позволяет регионам делить статистическую силу между тремя
-ролями.
+Таргет обучения — `flag_6m_30p`. Модель учитывает регион регистрации,
+фактический регион и переданный `equal_flag`. Этот флаг не вычисляется из
+кодов: он может быть равен нулю даже при совпадающих регионах.
 
 ## Архитектура
 
-- 70 регионов и два служебных ID: `MISSING=70`, `UNKNOWN=71`;
-- общий embedding `72 × 4`;
-- три исходных эмбеддинга;
-- абсолютные разности и произведения для каждой из трёх пар;
-- три индикатора совпадения и число уникальных регионов;
-- MLP `40 → 24 → 8 → 1` с LayerNorm, SiLU и Dropout;
-- обучаемый коэффициент `alpha`, начальное значение `0.1`.
+- 70 модельных кодов регионов `0..69`;
+- общий embedding `70 × 4` для обеих ролей;
+- два исходных эмбеддинга, абсолютная разность и произведение;
+- отдельный входной `equal_flag`;
+- MLP `17 → 24 → 8 → 1` с LayerNorm, SiLU и Dropout;
+- обучаемый коэффициент `alpha`;
+- выходная голова инициализируется нулями, поэтому до обучения результат
+  в точности равен `score_dubai`.
 
-В конфигурации по умолчанию у модели **1 546 обучаемых параметров**:
+В конфигурации по умолчанию у модели **986 обучаемых параметров**:
 
 | Компонент | Параметры |
 |---|---:|
-| Shared embedding | 288 |
-| Linear 40 → 24 | 984 |
+| Shared embedding | 280 |
+| Linear 17 → 24 | 432 |
 | LayerNorm 24 | 48 |
 | Linear 24 → 8 | 200 |
 | LayerNorm 8 | 16 |
 | Linear 8 → 1 | 9 |
 | alpha | 1 |
-| **Итого** | **1 546** |
+| **Итого** | **986** |
 
 ## Запуск
 
@@ -69,19 +70,32 @@ model = RegionalResidualScorer()
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 criterion = torch.nn.BCEWithLogitsLoss()
 
-base_logits = torch.tensor([0.2, -0.4])
-region_ids = torch.tensor([[0, 0, 0], [12, 7, 12]], dtype=torch.long)
+score_dubai = torch.tensor([0.20, 0.75])
+region_ids = torch.tensor([[0, 0], [12, 7]], dtype=torch.long)
+equal_flag = torch.tensor([1.0, 0.0])
 targets = torch.tensor([[0.0], [1.0]])
 
 optimizer.zero_grad()
-logits = model(base_logits, region_ids)
+logits = model(score_dubai, region_ids, equal_flag)
 loss = criterion(logits, targets)
 loss.backward()
 optimizer.step()
 ```
 
 Полный цикл обучения ожидает, что `train_loader` и `val_loader` возвращают
-батчи `(base_logits, region_ids, targets)`:
+батчи `(base_scores, region_ids, equal_flags, targets)`.
+
+Обучение на `synthetic_data/applications.csv`:
+
+```bash
+.venv/bin/train-region-model
+```
+
+По умолчанию train заканчивается `2025-12-31`, validation — `2026-04-30`,
+последующие заявки образуют test. Checkpoint сохраняется в
+`checkpoints/regional_residual.pt`.
+
+Низкоуровневый вызов `fit`:
 
 ```python
 from regional_score import EarlyStopping, ModelCheckpoint, WeightMonitor, fit
@@ -173,9 +187,10 @@ criterion = MaskedMultiTargetBCELoss(
 )
 ```
 
-Для этой модели `base_logits` и `targets` имеют форму `[batch, 3]`. Таргеты,
-которые ещё не созрели на дату среза, должны быть отмечены `NaN`: loss их
-игнорирует, а не считает отрицательным классом. Веса и поправки можно
+Для этой модели `base_scores` и `targets` имеют форму `[batch, 3]`, а
+`region_ids` — `[batch, 2]`. В `forward` также передаётся `equal_flag`.
+Таргеты, которые ещё не созрели на дату среза, должны быть отмечены `NaN`:
+loss их игнорирует, а не считает отрицательным классом. Веса и поправки можно
 мониторить отдельно по именам `target_heads.30@3.weight`, `alpha.30@3` и т. д.
 
 Для полностью независимого переобучения нужно создать по одному

@@ -15,10 +15,9 @@ class MultiTargetRegionalResidualScorer(RegionalResidualScorer):
     Порядок ``target_names`` задаёт порядок колонок во всех тензорах. Например,
     для ``("30@3", "30@6", "30@9")``:
 
-    - ``base_logits``: float-тензор ``[batch, 3]`` с отдельным базовым логитом
-      для каждого таргета. Нужно передавать логиты, а не вероятности;
-    - ``region_ids``: long-тензор ``[batch, 3]`` в порядке
-      registration, birth, application;
+    - ``base_scores``: float-тензор вероятностей ``[batch, 3]``;
+    - ``region_ids``: long-тензор ``[batch, 2]`` в порядке registration, factual;
+    - ``equal_flag``: бинарный индикатор равенства адресов;
     - результат: float-тензор логитов ``[batch, 3]`` в порядке target_names.
 
     Общие embedding и скрытые слои учатся на всех таргетах, а последний
@@ -28,11 +27,11 @@ class MultiTargetRegionalResidualScorer(RegionalResidualScorer):
     def __init__(
         self,
         target_names: Sequence[str],
-        num_regions: int = 72,
+        num_regions: int = 70,
         embedding_dim: int = 4,
         hidden_dims: tuple[int, int] = (24, 8),
         dropout: float = 0.15,
-        initial_alpha: float = 0.1,
+        initial_alpha: float = 1.0,
     ) -> None:
         # names определяет не только имена голов, но и порядок колонок входа
         # и выхода. После обучения этот порядок должен сохраняться.
@@ -71,24 +70,41 @@ class MultiTargetRegionalResidualScorer(RegionalResidualScorer):
     def num_targets(self) -> int:
         return len(self.target_names)
 
-    def regional_delta_logits(self, region_ids: Tensor) -> Tensor:
+    def regional_delta_logits(
+        self,
+        region_ids: Tensor,
+        equal_flag: Tensor,
+    ) -> Tensor:
         """Вернуть региональные поправки до умножения на target-specific alpha."""
-        shared_features = self.region_tower(self.region_features(region_ids))
+        shared_features = self.region_tower(
+            self.region_features(region_ids, equal_flag)
+        )
         return torch.cat(
             [self.target_heads[name](shared_features) for name in self.target_names],
             dim=1,
         )
 
-    def forward(self, base_logits: Tensor, region_ids: Tensor) -> Tensor:
-        """Добавить отдельную региональную поправку к каждому базовому логиту."""
-        if base_logits.ndim != 2 or base_logits.shape[1] != self.num_targets:
+    def forward(
+        self,
+        base_scores: Tensor,
+        region_ids: Tensor,
+        equal_flag: Tensor,
+    ) -> Tensor:
+        """Добавить региональную поправку к логиту каждого базового скора."""
+        if base_scores.ndim != 2 or base_scores.shape[1] != self.num_targets:
             raise ValueError(
-                f"base_logits must have shape [batch, {self.num_targets}]"
+                f"base_scores must have shape [batch, {self.num_targets}]"
             )
-        if base_logits.shape[0] != region_ids.shape[0]:
-            raise ValueError("base_logits and region_ids batch sizes must match")
+        if base_scores.shape[0] != region_ids.shape[0]:
+            raise ValueError("base_scores and region_ids batch sizes must match")
+        if not torch.is_floating_point(base_scores):
+            raise TypeError("base_scores must have a floating-point dtype")
+        if torch.any((base_scores < 0) | (base_scores > 1)):
+            raise ValueError("base_scores must be between 0 and 1")
 
-        delta_logits = self.regional_delta_logits(region_ids)
+        epsilon = torch.finfo(base_scores.dtype).eps
+        base_logits = torch.logit(base_scores.clamp(epsilon, 1 - epsilon))
+        delta_logits = self.regional_delta_logits(region_ids, equal_flag)
         # ParameterDict позволяет независимо отслеживать alpha.30@3,
         # alpha.30@6 и остальные коэффициенты через WeightMonitor.
         alpha = torch.stack([self.alpha[name] for name in self.target_names])

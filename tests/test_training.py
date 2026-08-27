@@ -15,11 +15,12 @@ from regional_score import (
 
 def make_batches() -> DataLoader:
     dataset = TensorDataset(
-        torch.tensor([0.2, -0.4, 1.1, 0.0]),
+        torch.tensor([0.2, 0.4, 0.8, 0.5]),
         torch.tensor(
-            [[0, 0, 0], [12, 7, 12], [70, 4, 71], [3, 3, 9]],
+            [[0, 0], [12, 7], [69, 4], [3, 9]],
             dtype=torch.long,
         ),
+        torch.tensor([1.0, 0.0, 0.0, 0.0]),
         torch.tensor([0.0, 1.0, 0.0, 1.0]),
     )
     return DataLoader(dataset, batch_size=2, shuffle=False)
@@ -93,4 +94,4 @@ def test_model_checkpoint_saves_every_fifth_epoch(tmp_path) -> None:
     ]
     checkpoint = torch.load(callback.saved_paths[0], weights_only=True)
     assert checkpoint["epoch"] == 5
-    assert checkpoint["model_state_dict"]["embedding.weight"].shape == (72, 4)
+    assert checkpoint["model_state_dict"]["embedding.weight"].shape == (70, 4)

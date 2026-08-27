@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 from torch import Tensor, nn
 
-Batch = tuple[Tensor, Tensor, Tensor]
+Batch = tuple[Tensor, Tensor, Tensor, Tensor]
 
 
 @dataclass(frozen=True)
@@ -192,15 +192,16 @@ def _run_epoch(
 
     context = torch.enable_grad() if training else torch.inference_mode()
     with context:
-        for base_logits, region_ids, targets in batches:
-            base_logits = base_logits.to(device)
+        for base_scores, region_ids, equal_flags, targets in batches:
+            base_scores = base_scores.to(device)
             region_ids = region_ids.to(device)
+            equal_flags = equal_flags.to(device)
             targets = targets.to(device)
 
             if training:
                 optimizer.zero_grad(set_to_none=True)
 
-            logits = model(base_logits, region_ids)
+            logits = model(base_scores, region_ids, equal_flags)
             targets = targets.reshape_as(logits).to(dtype=logits.dtype)
             loss = criterion(logits, targets)
             if loss.ndim != 0:
@@ -244,12 +245,13 @@ def fit(
 ) -> list[EpochMetrics]:
     """Обучить single-target или multi-target региональную модель.
 
-    Каждый элемент ``train_batches`` и ``val_batches`` — тройка:
+    Каждый элемент ``train_batches`` и ``val_batches`` — четвёрка:
 
-    - ``base_logits``: ``[batch]`` для single-target или
+    - ``base_scores``: вероятности ``[batch]`` для single-target или
       ``[batch, num_targets]`` для multi-target;
-    - ``region_ids``: long-тензор ``[batch, 3]`` в порядке
-      registration, birth, application;
+    - ``region_ids``: long-тензор ``[batch, 2]`` в порядке
+      registration, factual;
+    - ``equal_flags``: бинарный тензор ``[batch]``;
     - ``targets``: бинарный float-тензор той же формы, что выход модели.
       Для ``MaskedMultiTargetBCELoss`` незрелые таргеты передаются как ``NaN``.
 

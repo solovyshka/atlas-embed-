@@ -16,11 +16,12 @@ def main() -> None:
     print(f"{'TOTAL':<38} {count_trainable_parameters(model):>8,}")
 
     sample_regions = torch.tensor(
-        [[0, 0, 0], [12, 7, 12], [70, 4, 71]], dtype=torch.long
+        [[0, 0], [12, 7], [69, 4]], dtype=torch.long
     )
-    sample_base_logits = torch.zeros(3)
+    sample_base_scores = torch.tensor([0.1, 0.5, 0.9])
+    sample_equal_flags = torch.tensor([1.0, 0.0, 0.0])
     with torch.inference_mode():
-        logits = model(sample_base_logits, sample_regions)
+        logits = model(sample_base_scores, sample_regions, sample_equal_flags)
     print(f"\nSample output shape: {tuple(logits.shape)}")
 
 

@@ -16,13 +16,14 @@ TARGETS = ("30@3", "30@6", "30@9")
 
 def test_multi_target_model_has_independent_heads_and_gates() -> None:
     model = MultiTargetRegionalResidualScorer(TARGETS)
-    base_logits = torch.zeros(4, 3)
+    base_scores = torch.full((4, 3), 0.5)
     region_ids = torch.tensor(
-        [[0, 0, 0], [12, 7, 12], [70, 4, 71], [3, 3, 9]],
+        [[0, 0], [12, 7], [69, 4], [3, 9]],
         dtype=torch.long,
     )
+    equal_flags = torch.tensor([1.0, 0.0, 0.0, 0.0])
 
-    logits = model(base_logits, region_ids)
+    logits = model(base_scores, region_ids, equal_flags)
     logits.sum().backward()
 
     assert logits.shape == (4, 3)
@@ -33,10 +34,10 @@ def test_multi_target_model_has_independent_heads_and_gates() -> None:
 
 def test_multi_target_model_requires_one_base_logit_per_target() -> None:
     model = MultiTargetRegionalResidualScorer(TARGETS)
-    region_ids = torch.zeros(2, 3, dtype=torch.long)
+    region_ids = torch.zeros(2, 2, dtype=torch.long)
 
     with pytest.raises(ValueError, match=r"\[batch, 3\]"):
-        model(torch.zeros(2), region_ids)
+        model(torch.zeros(2), region_ids, torch.zeros(2))
 
 
 def test_masked_multi_target_loss_ignores_nan_labels() -> None:
@@ -93,13 +94,14 @@ def test_masked_loss_is_normalized_by_weighted_valid_observations() -> None:
 
 def test_fit_aggregates_masked_loss_by_valid_observation_weight() -> None:
     model = MultiTargetRegionalResidualScorer(TARGETS, dropout=0.0)
-    base_logits = torch.tensor(
-        [[0.2, -0.1, 0.5], [-0.4, 0.3, 0.1], [0.8, -0.2, -0.6]]
+    base_scores = torch.tensor(
+        [[0.2, 0.4, 0.5], [0.3, 0.6, 0.7], [0.8, 0.2, 0.1]]
     )
     region_ids = torch.tensor(
-        [[0, 0, 0], [12, 7, 12], [70, 4, 71]],
+        [[0, 0], [12, 7], [69, 4]],
         dtype=torch.long,
     )
+    equal_flags = torch.tensor([1.0, 0.0, 0.0])
     targets = torch.tensor(
         [
             [1.0, float("nan"), float("nan")],
@@ -112,14 +114,17 @@ def test_fit_aggregates_masked_loss_by_valid_observation_weight() -> None:
         target_weights={"30@3": 1.0, "30@6": 2.0, "30@9": 3.0},
     )
     batches = DataLoader(
-        TensorDataset(base_logits, region_ids, targets),
+        TensorDataset(base_scores, region_ids, equal_flags, targets),
         batch_size=2,
         shuffle=False,
     )
     optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
 
     with torch.inference_mode():
-        expected = criterion(model(base_logits, region_ids), targets).item()
+        expected = criterion(
+            model(base_scores, region_ids, equal_flags),
+            targets,
+        ).item()
     history = fit(
         model=model,
         train_batches=batches,
