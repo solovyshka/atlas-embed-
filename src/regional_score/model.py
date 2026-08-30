@@ -106,6 +106,21 @@ class RegionalResidualScorer(nn.Module):
         delta_logit = self.region_tower(features)
         return base_logit + self.alpha * delta_logit
 
+    def encode(self, region_ids: Tensor, equal_flag: Tensor) -> Tensor:
+        """Return compact region embeddings for boosting or logistic regression.
+
+        Shape is ``[batch, hidden_dims[1]]`` (8 by default). ``score_dubai``
+        is not included: concatenate it later as a separate feature.
+        """
+        hidden = self.region_features(region_ids, equal_flag)
+        for module in self.region_tower:
+            if isinstance(module, nn.Dropout):
+                continue
+            if isinstance(module, nn.Linear) and module.out_features == 1:
+                break
+            hidden = module(hidden)
+        return hidden
+
 
 def count_trainable_parameters(module: nn.Module) -> int:
     return sum(parameter.numel() for parameter in module.parameters() if parameter.requires_grad)

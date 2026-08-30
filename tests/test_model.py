@@ -30,6 +30,17 @@ def test_forward_preserves_batch_and_supports_backpropagation() -> None:
     assert model.alpha.grad is not None
 
 
+def test_encode_returns_hidden_embedding_without_score() -> None:
+    model = RegionalResidualScorer()
+    region_ids = torch.tensor([[0, 0], [12, 7]], dtype=torch.long)
+    equal_flags = torch.tensor([1.0, 0.0])
+
+    embeddings = model.encode(region_ids, equal_flags)
+
+    assert embeddings.shape == (2, 8)
+    assert embeddings.dtype == torch.float32
+
+
 def test_region_features_have_expected_width() -> None:
     model = RegionalResidualScorer()
     region_ids = torch.tensor([[1, 2], [4, 4]], dtype=torch.long)
