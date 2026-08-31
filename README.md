@@ -168,6 +168,34 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 `transfer_head=True` и `transfer_alpha=True`. Размеры embedding и скрытых слоёв
 исходной и новой моделей должны совпадать.
 
+## Подбор гиперпараметров single-target модели
+
+Отдельный скрипт перебирает размер embedding и скрытых слоёв, dropout, batch
+size, learning rate, weight decay, балансировку классов и число эпох:
+
+```powershell
+uv run python sweep_single_target.py `
+  --data path/to/applications.csv `
+  --trials 30 `
+  --epoch-options 5 10 20 40
+```
+
+Первые trial сравнивают текущую конфигурацию на каждом указанном числе эпох,
+остальные выбираются случайно из полного пространства параметров. Early
+stopping не используется: каждый trial проходит ровно заданное число эпох.
+
+Результаты сохраняются в `checkpoints/hyperparameter_sweep`:
+
+- `trial_*.pt` — отдельная итоговая модель каждого запуска;
+- `results.csv` — результаты в порядке выполнения;
+- `leaderboard.csv` — модели по убыванию validation ROC AUC;
+- `best_model.pt` — копия лучшей модели;
+- `search_plan.json` — полный воспроизводимый план эксперимента.
+
+Для ранжирования используется `roc_auc_score` вероятности
+`sigmoid(final_logit)` на validation. Test-выборка во время подбора не
+используется.
+
 ## Несколько таргетов
 
 Для совместного обучения горизонтов используется общий региональный backbone
