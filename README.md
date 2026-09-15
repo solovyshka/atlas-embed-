@@ -228,3 +228,63 @@ loss их игнорирует, а не считает отрицательны�
 Для обучения основной скор должен быть рассчитан out-of-fold либо зафиксирован
 до обучения региональной ветки. Иначе региональная модель может получить
 завышенную offline-оценку из-за утечки.
+
+## ОКВЭД-эмбеддинги поверх готового скора
+
+Отдельный пакет `okved_score` сравнивает две компактные residual-модели,
+которые не переобучают исходный бустинг:
+
+```text
+flat:
+primary_okved -> full-code embedding -> MLP -> delta_logit
+
+hierarchical:
+primary_okved -> [L1, L2, L3] -> level embeddings
+              -> masked mean -> MLP -> delta_logit
+
+final_logit = logit(boost_score) + alpha * delta_logit
+```
+
+Иерархия строится по точкам и использует накопительные пути:
+
+```text
+69.10   -> 69 -> 69.10
+46.74.2 -> 46 -> 46.74 -> 46.74.2
+```
+
+Неизвестный полный код попадает в `UNK`. В иерархической модели известные
+родительские уровни сохраняются, поэтому она может переносить сигнал на
+редкие и новые leaf-коды. Отсутствующие глубокие уровни кодируются `PAD` и
+не участвуют в pooling.
+
+Готовый `boost_score` должен быть OOF на train и рассчитан frozen-моделью на
+validation/test. В текущем эксперименте оцениваются только:
+
+1. исходный `boost_score`;
+2. flat residual NN;
+3. hierarchical residual NN.
+
+Синтетические данные:
+
+```bash
+uv run python synthetic_data/generate_okved.py \
+  --rows 20000 \
+  --regime mixed \
+  --oov-rate 0.04 \
+  --oov-cutoff 2026-01-01
+```
+
+После генерации единый benchmark запускается командой:
+
+```bash
+uv run python benchmark_okved.py \
+  --data synthetic_data/okved_applications.csv \
+  --output-dir checkpoints/okved_benchmark
+```
+
+Validation используется для early stopping обеих сетей. Test применяется
+один раз для итогового сравнения ROC AUC/Gini, PR AUC, log loss и Brier score;
+результаты также разбиваются на frequent, rare и OOV сегменты.
+Флаг `--match-parameter-budget` уменьшает ширину level embeddings так, чтобы
+число параметров hierarchical-модели было близко к flat-модели; фактические
+числа параметров сохраняются в `results.json`.

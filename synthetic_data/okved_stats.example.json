@@ -1,0 +1,78 @@
+{
+  "contract_version": 1,
+  "privacy": {
+    "aggregate_only": true,
+    "synthetic_example": true,
+    "note": "Replace only with approved aggregates; never include client or application records."
+  },
+  "dataset": {
+    "rows": 20000,
+    "clients": 10000,
+    "start_date": "2024-01-01",
+    "end_date": "2026-08-31",
+    "bad_rate": 0.05
+  },
+  "score": {
+    "distribution": {
+      "type": "logit_normal",
+      "logit_std": 1.35
+    },
+    "target_auc_metadata": {
+      "metric": "roc_auc",
+      "value": 0.73,
+      "evaluation_window": "out_of_time",
+      "informational_only": true
+    },
+    "deciles": [
+      {"decile": 1, "count": 2000, "mean_score": 0.008, "bads": 8},
+      {"decile": 2, "count": 2000, "mean_score": 0.014, "bads": 14},
+      {"decile": 3, "count": 2000, "mean_score": 0.020, "bads": 20},
+      {"decile": 4, "count": 2000, "mean_score": 0.027, "bads": 27},
+      {"decile": 5, "count": 2000, "mean_score": 0.036, "bads": 36},
+      {"decile": 6, "count": 2000, "mean_score": 0.048, "bads": 48},
+      {"decile": 7, "count": 2000, "mean_score": 0.063, "bads": 63},
+      {"decile": 8, "count": 2000, "mean_score": 0.084, "bads": 84},
+      {"decile": 9, "count": 2000, "mean_score": 0.116, "bads": 116},
+      {"decile": 10, "count": 2000, "mean_score": 0.190, "bads": 190}
+    ]
+  },
+  "okved": {
+    "counts_scope": "top_codes_only",
+    "counts_and_bads_by_l1": [
+      {"code": "46", "count": 6100, "bads": 335, "expected_bads": 305.0},
+      {"code": "62", "count": 3500, "bads": 151, "expected_bads": 175.0},
+      {"code": "69", "count": 2400, "bads": 108, "expected_bads": 120.0},
+      {"code": "01", "count": 1900, "bads": 112, "expected_bads": 95.0},
+      {"code": "86", "count": 1600, "bads": 67, "expected_bads": 80.0}
+    ],
+    "counts_and_bads_by_l2": [
+      {"code": "46.74", "count": 3300, "bads": 193, "expected_bads": 165.0},
+      {"code": "46.46", "count": 2800, "bads": 142, "expected_bads": 140.0},
+      {"code": "62.01", "count": 2300, "bads": 101, "expected_bads": 115.0},
+      {"code": "62.09", "count": 1200, "bads": 50, "expected_bads": 60.0},
+      {"code": "69.10", "count": 2400, "bads": 108, "expected_bads": 120.0}
+    ],
+    "counts_and_bads_by_full": [
+      {"code": "46.74.2", "count": 3300, "bads": 193, "expected_bads": 165.0},
+      {"code": "46.46", "count": 2800, "bads": 142, "expected_bads": 140.0},
+      {"code": "62.01", "count": 2300, "bads": 101, "expected_bads": 115.0},
+      {"code": "69.10", "count": 2400, "bads": 108, "expected_bads": 120.0},
+      {"code": "01.11", "count": 1250, "bads": 69, "expected_bads": 62.5},
+      {"code": "01.13.1", "count": 650, "bads": 43, "expected_bads": 32.5},
+      {"code": "62.09", "count": 1200, "bads": 50, "expected_bads": 60.0},
+      {"code": "86.21", "count": 1000, "bads": 39, "expected_bads": 50.0},
+      {"code": "86.90.9", "count": 600, "bads": 28, "expected_bads": 30.0}
+    ],
+    "code_depth_distribution": [
+      {"depth": 2, "count": 15100},
+      {"depth": 3, "count": 4900}
+    ]
+  },
+  "temporal": {
+    "drift_strength": 0.8,
+    "oov_cutoff": "2026-01-01",
+    "new_code_rate_after_cutoff": 0.04,
+    "rare_code_rate": 0.12,
+    "oov_leaf_codes": ["01.11.9", "46.74.9", "62.01.9", "86.90.1"]
+  }
+}
