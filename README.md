@@ -277,10 +277,11 @@ uv run python synthetic_data/generate_okved.py \
 После генерации единый benchmark запускается командой:
 
 ```bash
-uv run python benchmark_okved.py \
-  --data synthetic_data/okved_applications.csv \
-  --output-dir checkpoints/okved_benchmark
+uv run python benchmark_okved.py
 ```
+
+Пути к данным и checkpoint, временные границы, архитектура и параметры
+обучения задаются константами в начале `benchmark_okved.py`.
 
 Validation используется для early stopping обеих сетей. Test применяется
 один раз для итогового сравнения ROC AUC/Gini, PR AUC, log loss и Brier score;

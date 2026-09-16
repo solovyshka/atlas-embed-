@@ -1,10 +1,13 @@
 from pathlib import Path
 
-from benchmark_okved import parse_args, run_benchmark
+import benchmark_okved
+import pytest
 from synthetic_data.generate_okved import generate_okved_data
 
 
-def test_benchmark_runs_all_neural_arms(tmp_path: Path) -> None:
+def test_benchmark_runs_all_neural_arms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     data, _ = generate_okved_data(
         rows=3_000,
         clients=1_500,
@@ -20,28 +23,18 @@ def test_benchmark_runs_all_neural_arms(tmp_path: Path) -> None:
     output_dir = tmp_path / "benchmark"
     data.to_csv(data_path, index=False)
 
-    args = parse_args(
-        [
-            "--data",
-            str(data_path),
-            "--output-dir",
-            str(output_dir),
-            "--rare-threshold",
-            "1",
-            "--epochs",
-            "2",
-            "--batch-size",
-            "512",
-            "--patience",
-            "2",
-            "--bootstrap-samples",
-            "10",
-            "--match-parameter-budget",
-            "--device",
-            "cpu",
-        ]
+    monkeypatch.setattr(benchmark_okved, "DATA_PATH", data_path)
+    monkeypatch.setattr(benchmark_okved, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(benchmark_okved, "RARE_THRESHOLD", 1)
+    monkeypatch.setattr(benchmark_okved, "EPOCHS", 2)
+    monkeypatch.setattr(benchmark_okved, "BATCH_SIZE", 512)
+    monkeypatch.setattr(benchmark_okved, "EARLY_STOPPING_PATIENCE", 2)
+    monkeypatch.setattr(benchmark_okved, "BOOTSTRAP_SAMPLES", 10)
+    monkeypatch.setattr(benchmark_okved, "MATCH_PARAMETER_BUDGET", True)
+    monkeypatch.setattr(
+        benchmark_okved, "resolve_device", lambda: benchmark_okved.torch.device("cpu")
     )
-    result = run_benchmark(args)
+    result = benchmark_okved.run_benchmark()
 
     assert [arm["arm"] for arm in result["arms"]] == [
         "boost_score",

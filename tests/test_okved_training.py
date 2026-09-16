@@ -12,10 +12,6 @@ from okved_score.training import (
     EpochMetrics,
     fit_okved,
 )
-from regional_score.training import (
-    Callback as RegionalCallback,
-    EpochMetrics as RegionalEpochMetrics,
-)
 
 
 def make_batches() -> DataLoader:
@@ -47,9 +43,9 @@ class RecordingCallback(Callback):
         self.ended = True
 
 
-def test_training_reuses_regional_callback_contract() -> None:
-    assert Callback is RegionalCallback
-    assert EpochMetrics is RegionalEpochMetrics
+def test_training_exposes_own_callback_contract() -> None:
+    assert Callback.__module__ == "okved_score.training"
+    assert EpochMetrics.__module__ == "okved_score.training"
 
 
 def test_fit_okved_reports_losses_and_callbacks() -> None:

@@ -1,8 +1,7 @@
-"""Compare flat and hierarchical OKVED residual networks over a ready score."""
+"""Обучение flat и hierarchical ОКВЭД-моделей поверх готового бустинг-скора."""
 
 from __future__ import annotations
 
-import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -29,78 +28,36 @@ from okved_score import (
     temporal_split,
 )
 from okved_score.data import OkvedApplications
-from regional_score import EarlyStopping
+from okved_score.training import EarlyStopping
+
+DATA_PATH = Path("synthetic_data/okved_applications.csv")
+OUTPUT_DIR = Path("checkpoints/okved_benchmark")
+TRAIN_END = "2025-12-31"
+VALIDATION_END = "2026-04-30"
+
+RARE_THRESHOLD = 20
+MAX_LEVELS = 3
+EMBEDDING_DIM = 8
+HIDDEN_DIM = 16
+OUTPUT_DIM = 8
+MATCH_PARAMETER_BUDGET = False
+DROPOUT = 0.1
+
+EPOCHS = 20
+BATCH_SIZE = 2048
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 1e-4
+EARLY_STOPPING_PATIENCE = 4
+BOOTSTRAP_SAMPLES = 200
+SEED = 42
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--data",
-        type=Path,
-        default=Path("synthetic_data/okved_applications.csv"),
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path("checkpoints/okved_benchmark"),
-    )
-    parser.add_argument("--train-end", default="2025-12-31")
-    parser.add_argument("--validation-end", default="2026-04-30")
-    parser.add_argument("--rare-threshold", type=int, default=20)
-    parser.add_argument("--max-levels", type=int, default=3)
-    parser.add_argument("--embedding-dim", type=int, default=8)
-    parser.add_argument("--hidden-dim", type=int, default=16)
-    parser.add_argument("--output-dim", type=int, default=8)
-    parser.add_argument(
-        "--match-parameter-budget",
-        action="store_true",
-        help="Reduce hierarchy embedding width to approximate the flat parameter budget.",
-    )
-    parser.add_argument("--dropout", type=float, default=0.1)
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--batch-size", type=int, default=2048)
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--patience", type=int, default=4)
-    parser.add_argument("--bootstrap-samples", type=int, default=200)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--device",
-        choices=("auto", "cpu", "mps", "cuda"),
-        default="auto",
-    )
-    return parser.parse_args(argv)
-
-
-def resolve_device(name: str) -> torch.device:
-    if name != "auto":
-        return torch.device(name)
+def resolve_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
-
-
-def _validate_args(args: argparse.Namespace) -> None:
-    positive_names = (
-        "rare_threshold",
-        "max_levels",
-        "embedding_dim",
-        "hidden_dim",
-        "output_dim",
-        "epochs",
-        "batch_size",
-        "patience",
-        "bootstrap_samples",
-    )
-    for name in positive_names:
-        if getattr(args, name) < 1:
-            raise ValueError(f"{name.replace('_', '-')} must be positive")
-    if not 0 <= args.dropout < 1:
-        raise ValueError("dropout must be in [0, 1)")
-    if args.learning_rate <= 0 or args.weight_decay < 0:
-        raise ValueError("learning-rate must be positive and weight-decay non-negative")
 
 
 def _ids_tensor(
@@ -162,17 +119,15 @@ def _train_model(
     model: nn.Module,
     train_dataset: TensorDataset,
     validation_dataset: TensorDataset,
-    args: argparse.Namespace,
     device: torch.device,
 ) -> tuple[nn.Module, list[dict[str, float | int]]]:
-    torch.manual_seed(args.seed)
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay,
+        lr=LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY,
     )
     early_stopping = EarlyStopping(
-        patience=args.patience,
+        patience=EARLY_STOPPING_PATIENCE,
         min_delta=1e-5,
         restore_best_weights=True,
     )
@@ -180,19 +135,19 @@ def _train_model(
         model=model,
         train_batches=_loader(
             train_dataset,
-            args.batch_size,
+            BATCH_SIZE,
             shuffle=True,
-            seed=args.seed,
+            seed=SEED,
         ),
         val_batches=_loader(
             validation_dataset,
-            args.batch_size,
+            BATCH_SIZE,
             shuffle=False,
-            seed=args.seed,
+            seed=SEED,
         ),
         optimizer=optimizer,
         criterion=nn.BCEWithLogitsLoss(),
-        epochs=args.epochs,
+        epochs=EPOCHS,
         callbacks=[early_stopping],
         device=device,
         max_grad_norm=1.0,
@@ -286,7 +241,6 @@ def _checkpoint(
     model_config: dict[str, Any],
     vocabulary: FlatOkvedVocabulary | HierarchicalOkvedVocabulary,
     history: list[dict[str, float | int]],
-    args: argparse.Namespace,
 ) -> None:
     torch.save(
         {
@@ -298,8 +252,8 @@ def _checkpoint(
             "vocabulary": vocabulary.to_dict(),
             "history": history,
             "split": {
-                "train_end": args.train_end,
-                "validation_end": args.validation_end,
+                "train_end": TRAIN_END,
+                "validation_end": VALIDATION_END,
             },
             "base_score": {
                 "column": "boost_score",
@@ -311,27 +265,27 @@ def _checkpoint(
     )
 
 
-def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
-    _validate_args(args)
-    device = resolve_device(args.device)
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+def run_benchmark() -> dict[str, Any]:
+    """Обучить две ОКВЭД-сети и сравнить их с готовым boost score."""
+    device = resolve_device()
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
 
-    applications = load_applications_csv(args.data)
+    applications = load_applications_csv(DATA_PATH)
     splits = temporal_split(
         applications,
-        train_end=args.train_end,
-        validation_end=args.validation_end,
+        train_end=TRAIN_END,
+        validation_end=VALIDATION_END,
     )
     flat_vocabulary = FlatOkvedVocabulary.fit(
         splits.train.primary_okved,
-        rare_threshold=args.rare_threshold,
-        max_levels=args.max_levels,
+        rare_threshold=RARE_THRESHOLD,
+        max_levels=MAX_LEVELS,
     )
     hierarchical_vocabulary = HierarchicalOkvedVocabulary.fit(
         splits.train.primary_okved,
-        rare_threshold=args.rare_threshold,
-        max_levels=args.max_levels,
+        rare_threshold=RARE_THRESHOLD,
+        max_levels=MAX_LEVELS,
     )
 
     flat_train = _dataset(splits.train, flat_vocabulary)
@@ -345,44 +299,43 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
 
     flat_config = {
         "vocab_size": flat_vocabulary.vocab_size,
-        "embedding_dim": args.embedding_dim,
-        "hidden_dim": args.hidden_dim,
-        "output_dim": args.output_dim,
-        "dropout": args.dropout,
+        "embedding_dim": EMBEDDING_DIM,
+        "hidden_dim": HIDDEN_DIM,
+        "output_dim": OUTPUT_DIM,
+        "dropout": DROPOUT,
     }
-    hierarchical_embedding_dim = args.embedding_dim
-    if args.match_parameter_budget:
-        flat_budget = args.embedding_dim * (
-            flat_vocabulary.vocab_size + args.hidden_dim
+    hierarchical_embedding_dim = EMBEDDING_DIM
+    if MATCH_PARAMETER_BUDGET:
+        flat_budget = EMBEDDING_DIM * (
+            flat_vocabulary.vocab_size + HIDDEN_DIM
         )
         hierarchical_width = sum(hierarchical_vocabulary.vocab_sizes)
         hierarchical_embedding_dim = max(
             1,
-            round(flat_budget / (hierarchical_width + args.hidden_dim)),
+            round(flat_budget / (hierarchical_width + HIDDEN_DIM)),
         )
     hierarchical_config = {
         "vocab_sizes": hierarchical_vocabulary.vocab_sizes,
         "embedding_dim": hierarchical_embedding_dim,
-        "hidden_dim": args.hidden_dim,
-        "output_dim": args.output_dim,
-        "dropout": args.dropout,
+        "hidden_dim": HIDDEN_DIM,
+        "output_dim": OUTPUT_DIM,
+        "dropout": DROPOUT,
     }
-    torch.manual_seed(args.seed)
+    torch.manual_seed(SEED)
     flat_model = FlatOkvedResidualScorer(**flat_config)
-    torch.manual_seed(args.seed)
+    torch.manual_seed(SEED)
     hierarchical_model = HierarchicalOkvedResidualScorer(**hierarchical_config)
     _assert_zero_initialized(
-        flat_model, flat_train, args.batch_size, device
+        flat_model, flat_train, BATCH_SIZE, device
     )
     _assert_zero_initialized(
-        hierarchical_model, hierarchical_train, args.batch_size, device
+        hierarchical_model, hierarchical_train, BATCH_SIZE, device
     )
     flat_model, flat_history = _train_model(
         "flat",
         flat_model,
         flat_train,
         flat_validation,
-        args,
         device,
     )
     hierarchical_model, hierarchical_history = _train_model(
@@ -390,17 +343,16 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         hierarchical_model,
         hierarchical_train,
         hierarchical_validation,
-        args,
         device,
     )
 
     target = splits.test.targets.numpy().astype(np.int64)
     baseline = splits.test.boost_scores.numpy()
     flat_probability = _predict(
-        flat_model, flat_test, args.batch_size, device
+        flat_model, flat_test, BATCH_SIZE, device
     )
     hierarchical_probability = _predict(
-        hierarchical_model, hierarchical_test, args.batch_size, device
+        hierarchical_model, hierarchical_test, BATCH_SIZE, device
     )
     leaf_ids = np.asarray(flat_vocabulary.transform(splits.test.primary_okved))
     arms = [
@@ -411,8 +363,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             baseline,
             splits.test.client_ids,
             leaf_ids,
-            args.bootstrap_samples,
-            args.seed,
+            BOOTSTRAP_SAMPLES,
+            SEED,
         ),
         _arm_result(
             "flat_residual_nn",
@@ -421,8 +373,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             baseline,
             splits.test.client_ids,
             leaf_ids,
-            args.bootstrap_samples,
-            args.seed,
+            BOOTSTRAP_SAMPLES,
+            SEED,
         ),
         _arm_result(
             "hierarchical_residual_nn",
@@ -431,39 +383,53 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             baseline,
             splits.test.client_ids,
             leaf_ids,
-            args.bootstrap_samples,
-            args.seed,
+            BOOTSTRAP_SAMPLES,
+            SEED,
         ),
     ]
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     _checkpoint(
-        args.output_dir / "flat_model.pt",
+        OUTPUT_DIR / "flat_model.pt",
         flat_model,
         flat_config,
         flat_vocabulary,
         flat_history,
-        args,
     )
     _checkpoint(
-        args.output_dir / "hierarchical_model.pt",
+        OUTPUT_DIR / "hierarchical_model.pt",
         hierarchical_model,
         hierarchical_config,
         hierarchical_vocabulary,
         hierarchical_history,
-        args,
     )
     result = {
         "device": str(device),
-        "seed": args.seed,
+        "seed": SEED,
         "rows": {
             "train": len(splits.train),
             "validation": len(splits.validation),
             "test": len(splits.test),
         },
         "config": {
-            key: str(value) if isinstance(value, Path) else value
-            for key, value in vars(args).items()
+            "data": str(DATA_PATH),
+            "output_dir": str(OUTPUT_DIR),
+            "train_end": TRAIN_END,
+            "validation_end": VALIDATION_END,
+            "rare_threshold": RARE_THRESHOLD,
+            "max_levels": MAX_LEVELS,
+            "embedding_dim": EMBEDDING_DIM,
+            "hidden_dim": HIDDEN_DIM,
+            "output_dim": OUTPUT_DIM,
+            "dropout": DROPOUT,
+            "match_parameter_budget": MATCH_PARAMETER_BUDGET,
+            "epochs": EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "learning_rate": LEARNING_RATE,
+            "weight_decay": WEIGHT_DECAY,
+            "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+            "bootstrap_samples": BOOTSTRAP_SAMPLES,
+            "seed": SEED,
         },
         "coverage": {
             "frequent": int((leaf_ids >= 3).sum()),
@@ -482,7 +448,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         },
         "arms": arms,
     }
-    (args.output_dir / "results.json").write_text(
+    (OUTPUT_DIR / "results.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -495,12 +461,12 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             }
             for arm in arms
         ]
-    ).to_csv(args.output_dir / "results.csv", index=False)
+    ).to_csv(OUTPUT_DIR / "results.csv", index=False)
     return result
 
 
-def main(argv: list[str] | None = None) -> None:
-    result = run_benchmark(parse_args(argv))
+def main() -> None:
+    result = run_benchmark()
     summary = [
         {
             "arm": arm["arm"],

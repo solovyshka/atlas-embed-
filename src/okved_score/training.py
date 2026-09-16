@@ -1,13 +1,86 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+import copy
+import math
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor, nn
 
-from regional_score.training import Callback, EarlyStopping, EpochMetrics
-
 Batch = tuple[Tensor, Tensor, Tensor]
+
+
+@dataclass(frozen=True)
+class EpochMetrics:
+    epoch: int
+    train_loss: float
+    val_loss: float
+
+
+class Callback:
+    stop_training = False
+
+    def on_train_begin(self, model: nn.Module) -> None:
+        pass
+
+    def on_epoch_end(self, model: nn.Module, metrics: EpochMetrics) -> None:
+        pass
+
+    def on_train_end(
+        self, model: nn.Module, history: Sequence[EpochMetrics]
+    ) -> None:
+        pass
+
+
+class EarlyStopping(Callback):
+    """Stop training when validation loss stops improving."""
+
+    def __init__(
+        self,
+        patience: int = 5,
+        min_delta: float = 0.0,
+        restore_best_weights: bool = True,
+    ) -> None:
+        if patience < 1:
+            raise ValueError("patience must be positive")
+        if min_delta < 0:
+            raise ValueError("min_delta must be non-negative")
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.best_epoch: int | None = None
+        self.best_value = math.inf
+        self.stopped_epoch: int | None = None
+        self._epochs_without_improvement = 0
+        self._best_state: dict[str, Tensor] | None = None
+
+    def on_train_begin(self, model: nn.Module) -> None:
+        self.stop_training = False
+        self.best_epoch = None
+        self.best_value = math.inf
+        self.stopped_epoch = None
+        self._epochs_without_improvement = 0
+        self._best_state = None
+
+    def on_epoch_end(self, model: nn.Module, metrics: EpochMetrics) -> None:
+        if metrics.val_loss < self.best_value - self.min_delta:
+            self.best_value = metrics.val_loss
+            self.best_epoch = metrics.epoch
+            self._epochs_without_improvement = 0
+            if self.restore_best_weights:
+                self._best_state = copy.deepcopy(model.state_dict())
+            return
+        self._epochs_without_improvement += 1
+        if self._epochs_without_improvement >= self.patience:
+            self.stopped_epoch = metrics.epoch
+            self.stop_training = True
+
+    def on_train_end(
+        self, model: nn.Module, history: Sequence[EpochMetrics]
+    ) -> None:
+        if self.restore_best_weights and self._best_state is not None:
+            model.load_state_dict(self._best_state)
 
 
 def _run_epoch(
