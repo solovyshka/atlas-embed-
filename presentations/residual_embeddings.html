@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Residual-эмбеддинги поверх готового риск-скора</title>
+  <style>
+    :root {
+      --bg: #eceae4;
+      --slide: #fbfaf7;
+      --ink: #1b1b1b;
+      --muted: #5a5a56;
+      --line: #d4d0c6;
+      --fill: #e8e4da;
+      --accent: #1f4e79;
+      --ok: #1b6b45;
+      --warn: #8a5a10;
+      --bad: #8b2c2c;
+      --formula: #eef2f6;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #111;
+      color: var(--ink);
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+    .stage {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .deck {
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      position: relative;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .slide {
+      display: none;
+      position: absolute;
+      inset: 0;
+      padding: 4.2% 4.8% 6.5%;
+      background: var(--slide);
+      flex-direction: column;
+    }
+    .slide.active { display: flex; }
+    h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.02em; }
+    h1 { font-size: 2.35rem; line-height: 1.15; }
+    h2 { font-size: 1.85rem; line-height: 1.2; }
+    h3 { font-size: 1.05rem; color: var(--accent); }
+    p { margin: 0; color: var(--muted); font-size: 1.05rem; line-height: 1.45; }
+    .lead { font-size: 1.18rem; max-width: 52rem; margin-top: 0.8rem; }
+    .row { display: flex; gap: 1rem; align-items: stretch; }
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 1.2rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.7rem; }
+    .grow { flex: 1; min-height: 0; }
+    .mt { margin-top: 1rem; }
+    .mt-sm { margin-top: 0.7rem; }
+    .kicker {
+      display: flex; gap: 0.5rem; margin-bottom: 0.7rem;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--fill);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 0.18rem 0.7rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .stat {
+      background: var(--fill);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+    }
+    .stat b { display: block; font-size: 2rem; line-height: 1.1; }
+    .stat span { color: var(--muted); font-size: 0.92rem; }
+    .ok b { color: var(--ok); }
+    .info b { color: var(--accent); }
+    .warn b { color: var(--warn); }
+    .formula {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      background: var(--formula);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 1.05rem;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+    }
+    .card h3 { margin-bottom: 0.4rem; color: var(--ink); font-size: 1rem; }
+    .card p { font-size: 0.95rem; }
+    .callout {
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      border-radius: 8px;
+      padding: 0.75rem 0.95rem;
+      background: #fff;
+    }
+    .callout.ok { border-left-color: var(--ok); }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.bad { border-left-color: var(--bad); }
+    .callout strong { display: block; margin-bottom: 0.25rem; }
+    .node {
+      flex: 1;
+      min-height: 5.4rem;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      padding: 0.5rem;
+    }
+    .node.hi { background: #e4edf6; border-color: var(--accent); }
+    .node b { font-size: 0.92rem; }
+    .node span { color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
+    .arrow {
+      display: flex; align-items: center; color: var(--muted);
+      font-size: 1.4rem; min-width: 1.3rem; justify-content: center;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.98rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.42rem 0.55rem;
+      border-bottom: 1px solid var(--line);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .bars {
+      display: grid;
+      gap: 0.6rem;
+      align-items: end;
+      height: 11.2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .bars.n2 { grid-template-columns: 1fr 1fr; }
+    .pair {
+      display: flex;
+      gap: 0.55rem;
+      height: 100%;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .col {
+      width: 2.1rem;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .col i {
+      font-style: normal;
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-bottom: 0.15rem;
+    }
+    .bar {
+      width: 100%;
+      border-radius: 3px 3px 0 0;
+    }
+    .bar.train { background: #c5c0b4; }
+    .bar.oot { background: var(--accent); }
+    .legend { display: flex; gap: 1rem; justify-content: flex-end; font-size: 0.8rem; color: var(--muted); }
+    .sw { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; }
+    .labels { display: grid; gap: 0.6rem; margin-top: 0.4rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
+    .labels.n2 { grid-template-columns: 1fr 1fr; }
+    .tiny { font-size: 0.82rem; color: var(--muted); }
+    .code {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      background: var(--fill);
+      padding: 0.05rem 0.28rem;
+      border-radius: 4px;
+    }
+    .hud {
+      position: absolute;
+      left: 4.8%;
+      right: 4.8%;
+      bottom: 2.2%;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.78rem;
+      pointer-events: none;
+    }
+    @media print {
+      html, body, .stage { height: auto; background: white; }
+      .hud { display: none; }
+      .deck {
+        width: auto;
+        height: auto;
+        overflow: visible;
+      }
+      .slide {
+        display: flex !important;
+        position: relative;
+        page-break-after: always;
+        break-after: page;
+        width: 13.333in;
+        height: 7.5in;
+      }
+      .slide:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="deck" id="deck">
+
+      <section class="slide active">
+        <div class="kicker">
+          <span class="pill on">Риск-менеджмент</span>
+          <span class="pill">Результаты OOT</span>
+        </div>
+        <h1>Residual-эмбеддинги поверх готового риск-скора</h1>
+        <p class="lead">Один принцип для отрасли и для региона: не пересчитываем дефолт, а учим поправку к frozen boost score. Сначала ОКВЭД, затем региональная модель, в конце — почему более ранние постановки не дали прироста.</p>
+        <div class="callout mt">
+          <strong>Главный тезис</strong>
+          И ОКВЭД, и регион объясняют только остаток после индивидуального скора: logit(p_final) = logit(p_boost) + α · Δ.
+        </div>
+        <div class="grid-3 mt grow" style="align-content:start">
+          <div class="stat ok"><b>+1.2 п.п.</b><span>ПК OOT, ОКВЭД flat residual NN</span></div>
+          <div class="stat info"><b>+0.7 п.п.</b><span>ПК OOT, региональная модель</span></div>
+          <div class="stat warn"><b>0</b><span>ПК OOT, ОКВЭД hierarchical</span></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>1. ОКВЭД — постановка</h2>
+        <p class="mt-sm">Учим отраслевую поправку к готовому boost score. Две архитектуры: flat по полному коду и hierarchical по уровням кода.</p>
+        <div class="grid-2 mt grow">
+          <div>
+            <div class="formula">logit(p_final) = logit(p_boost) + α · Δ_OKVED</div>
+            <p class="mt-sm">logit(p) = ln(p / (1 − p)). Добавки живут в шкале log-odds.</p>
+            <div class="formula mt">p_final = sigmoid(logit(p_boost) + α · Δ_OKVED)</div>
+          </div>
+          <div>
+            <p><b>p_boost</b> — готовая вероятность существующего бустинга.</p>
+            <p class="mt-sm"><b>Δ_OKVED</b> — поправка только из ОКВЭД.</p>
+            <p class="mt-sm"><b>α</b> — сила поправки: если сигнал слаб, модель уменьшает влияние.</p>
+            <div class="callout ok mt">
+              <strong>Безопасный старт</strong>
+              Последний слой инициализирован нулями. До обучения Δ_OKVED = 0, то есть p_final совпадает с p_boost.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>ОКВЭД — структура модели</h2>
+        <p class="mt-sm">На входе один готовый score и один основной ОКВЭД. Меняется только способ получить отраслевое представление.</p>
+        <div class="row mt grow" style="align-items:center">
+          <div class="node"><b>boost_score</b><span>вероятность [0; 1]</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>ОКВЭД-encoder</b><span>flat или hierarchy; [B, 8]</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Residual head</b><span>embedding [B, 8] → Δ [B, 1]</span></div>
+          <div class="arrow">→</div>
+          <div class="node hi"><b>p_final</b><span>готовый скор + поправка</span></div>
+        </div>
+        <p class="tiny mt">B — размер batch. Бустинг не входит в нейросеть и не обновляется при ее обучении.</p>
+      </section>
+
+      <section class="slide">
+        <h2>ОКВЭД — два encoder</h2>
+        <div class="grid-2 mt grow">
+          <div class="card">
+            <h3>Flat: полный код</h3>
+            <p>Один компактный вектор на leaf-код. Лучше, когда наблюдений достаточно.</p>
+            <div class="row mt-sm">
+              <div class="node"><b>46.74.2</b><span>primary_okved</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><b>Leaf ID</b><span>словарь train</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><b>Emb K×8</b><span>таблица</span></div>
+              <div class="arrow">→</div>
+              <div class="node hi"><b>Δ</b><span>8→16→8→1</span></div>
+            </div>
+            <div class="callout warn mt-sm">
+              <strong>Граница</strong>
+              Редкий или новый leaf получает общий RARE/UNK embedding.
+            </div>
+          </div>
+          <div class="card">
+            <h3>Hierarchical: уровни кода</h3>
+            <p>Даже новый полный код может опереться на известных родителей.</p>
+            <div class="row mt-sm">
+              <div class="node"><b>46.74.2</b><span>вход</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><b>Путь</b><span>46 · 46.74 · leaf</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><b>L1 L2 L3</b><span>embeddings</span></div>
+              <div class="arrow">→</div>
+              <div class="node hi"><b>mean</b><span>без PAD</span></div>
+            </div>
+            <div class="callout ok mt-sm">
+              <strong>Перенос</strong>
+              Для 46.74.9 leaf = UNK, но 46 и 46.74 остаются в расчете.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>ОКВЭД — обучение</h2>
+        <div class="grid-3 mt">
+          <div class="card"><h3>Временной split</h3><p>Train — прошлый период; validation — следующий; test — самый свежий. Проверяем устойчивость во времени.</p></div>
+          <div class="card"><h3>OOF / frozen score</h3><p>На train — OOF boost score. На validation/test — скор модели, не обучавшейся на этих таргетах.</p></div>
+          <div class="card"><h3>Vocabulary только train</h3><p>PAD для отсутствующего уровня, RARE для редкого, UNK для нового кода.</p></div>
+        </div>
+        <div class="formula mt">Loss = −mean(y·ln(p_final) + (1−y)·ln(1−p_final))</div>
+        <p class="mt-sm">Минимизируем BCE. Early stopping выбирает эпоху по validation loss.</p>
+        <div class="formula mt">Gini = 2 · ROC AUC − 1</div>
+        <p class="tiny mt">Метрика дальше — прирост Gini в п.п. к frozen boost score. +1 п.п. Gini = +0.5 п.п. AUC.</p>
+      </section>
+
+      <section class="slide">
+        <h2>ОКВЭД — результаты Gini</h2>
+        <p class="mt-sm">Только ОКВЭД-ветки. Hierarchical на ПК OOT = 0.</p>
+        <div class="legend mt-sm">
+          <span><span class="sw" style="background:#c5c0b4"></span>Train, п.п. Gini</span>
+          <span><span class="sw" style="background:#1f4e79"></span>OOT, п.п. Gini</span>
+        </div>
+        <div class="grid-2 mt grow">
+          <div>
+            <h3>ПК</h3>
+            <div class="bars n2 mt-sm">
+              <div class="pair">
+                <div class="col"><i>+2.0</i><div class="bar train" style="height:57%"></div></div>
+                <div class="col"><i>+1.2</i><div class="bar oot" style="height:34%"></div></div>
+              </div>
+              <div class="pair">
+                <div class="col"><i>+2.0</i><div class="bar train" style="height:57%"></div></div>
+                <div class="col"><i>0</i><div class="bar oot" style="height:2px"></div></div>
+              </div>
+            </div>
+            <div class="labels n2"><span>Flat residual NN</span><span>Hierarchical residual NN</span></div>
+          </div>
+          <div>
+            <h3>КК</h3>
+            <div class="bars n2 mt-sm">
+              <div class="pair">
+                <div class="col"><i>+1.7</i><div class="bar train" style="height:49%"></div></div>
+                <div class="col"><i>+0.7</i><div class="bar oot" style="height:20%"></div></div>
+              </div>
+              <div class="pair">
+                <div class="col"><i>+3.1</i><div class="bar train" style="height:89%"></div></div>
+                <div class="col"><i>+0.3</i><div class="bar oot" style="height:9%"></div></div>
+              </div>
+            </div>
+            <div class="labels n2"><span>Flat residual NN</span><span>Hierarchical residual NN</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>ОКВЭД — вывод</h2>
+        <table class="mt">
+          <thead>
+            <tr><th>Продукт</th><th>Сплит</th><th class="num">Flat residual NN</th><th class="num">Hierarchical residual NN</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ПК</td><td>Train</td><td class="num">+2.0 п.п.</td><td class="num">+2.0 п.п.</td></tr>
+            <tr><td>ПК</td><td>OOT</td><td class="num">+1.2 п.п.</td><td class="num">+0.0 п.п.</td></tr>
+            <tr><td>КК</td><td>Train</td><td class="num">+1.7 п.п.</td><td class="num">+3.1 п.п.</td></tr>
+            <tr><td>КК</td><td>OOT</td><td class="num">+0.7 п.п.</td><td class="num">+0.3 п.п.</td></tr>
+          </tbody>
+        </table>
+        <div class="grid-2 mt">
+          <div class="callout ok">
+            <strong>Вывод по ПК</strong>
+            На OOT работает flat residual NN: +1.2 п.п. Gini. Hierarchical на train +2.0, на OOT прирост = 0 — иерархия не переносится.
+          </div>
+          <div class="callout warn">
+            <strong>Вывод по КК</strong>
+            На OOT flat +0.7, hierarchical +0.3. На train hierarchical +3.1 — сильное переобучение. Меньше данных, чем у ПК.
+          </div>
+        </div>
+        <div class="callout bad mt">
+          <strong>ПК и КК нельзя учить совместно</strong>
+          Слишком большая разница в масштабе loss. Совместное обучение математически нетривиально и не делается.
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>2. Региональная модель — постановка</h2>
+        <p class="mt-sm">Тот же residual-принцип, но вход — два адресных региона: регистрации и фактический. Сеть учит взаимодействие пары, а не один код.</p>
+        <div class="grid-2 mt grow">
+          <div>
+            <div class="formula">logit(p_final) = logit(p_boost) + α · Δ_region</div>
+            <p class="mt-sm">Формула совпадает с ОКВЭД. Меняется только источник Δ.</p>
+            <div class="formula mt">p_final = sigmoid(logit(p_boost) + α · Δ_region)</div>
+          </div>
+          <div>
+            <p><b>p_boost</b> — тот же frozen / OOF-скор бустинга.</p>
+            <p class="mt-sm"><b>Δ_region</b> — поправка из регистрации, фактического региона и флага равенства.</p>
+            <p class="mt-sm"><b>α</b> — сила поправки. Последний слой нулевой: до обучения p_final = p_boost.</p>
+            <div class="callout ok mt">
+              <strong>Безопасный старт</strong>
+              Региональная ветка не сдвигает скор, пока не найдет устойчивый остаточный сигнал.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>Региональная модель — структура</h2>
+        <p class="mt-sm">Общая таблица эмбеддингов на 70 регионов. Признаки — два вектора, |разность|, произведение и equal_flag. Размерность взаимодействий: 4·4 + 1 = 17.</p>
+        <div class="row mt" style="align-items:center">
+          <div class="node"><b>Регион регистрации</b><span>ID [B]</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Shared embedding</b><span>таблица 70 × 4</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Взаимодействия</b><span>reg, fact, |diff|, product, flag</span></div>
+          <div class="arrow">→</div>
+          <div class="node hi"><b>MLP → Δ_region</b><span>17 → 24 → 8 → 1</span></div>
+        </div>
+        <div class="grid-3 mt grow">
+          <div class="card"><h3>Входы</h3><p>reg_region, fact_region, equal_flag и frozen boost_score. Скор не идет в encoder.</p></div>
+          <div class="card"><h3>Башня</h3><p>Linear 17→24 → LN+SiLU+Dropout → 24→8 → LN+SiLU+Dropout → 8→1.</p></div>
+          <div class="card"><h3>Сборка</h3><p>logit(boost) + α × Δ_region, затем sigmoid → p_final.</p></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>Региональная модель — обучение</h2>
+        <div class="grid-3 mt">
+          <div class="card"><h3>Временной split</h3><p>Тот же протокол, что у ОКВЭД: train / validation / OOT-test по времени.</p></div>
+          <div class="card"><h3>OOF / frozen score</h3><p>На train — OOF boost score. На validation и test — скор, не видевший эти таргеты.</p></div>
+          <div class="card"><h3>Общий словарь регионов</h3><p>Одна таблица 70 × 4 на регистрацию и факт. Регион не кодируется «как категория бустинга».</p></div>
+        </div>
+        <div class="formula mt">Loss = −mean(y·ln(p_final) + (1−y)·ln(1−p_final))</div>
+        <p class="mt-sm">Та же BCE, что у ОКВЭД. Early stopping по validation loss. Метрика — прирост Gini в п.п. к frozen boost score.</p>
+      </section>
+
+      <section class="slide">
+        <h2>Региональная модель — результаты и вывод</h2>
+        <div class="legend mt-sm">
+          <span><span class="sw" style="background:#c5c0b4"></span>Train, п.п. Gini</span>
+          <span><span class="sw" style="background:#1f4e79"></span>OOT, п.п. Gini</span>
+        </div>
+        <div class="row mt">
+          <div style="flex:1.1">
+            <div class="bars n2" style="height:9.2rem">
+              <div class="pair">
+                <div class="col"><i>+1.2</i><div class="bar train" style="height:48%"></div></div>
+                <div class="col"><i>+0.7</i><div class="bar oot" style="height:28%"></div></div>
+              </div>
+              <div class="pair">
+                <div class="col"><i>+2.0</i><div class="bar train" style="height:80%"></div></div>
+                <div class="col"><i>+0.3</i><div class="bar oot" style="height:12%"></div></div>
+              </div>
+            </div>
+            <div class="labels n2"><span>ПК</span><span>КК</span></div>
+          </div>
+          <div style="flex:1">
+            <table>
+              <thead><tr><th>Продукт</th><th class="num">Train</th><th class="num">OOT</th></tr></thead>
+              <tbody>
+                <tr><td>ПК</td><td class="num">+1.2 п.п.</td><td class="num">+0.7 п.п.</td></tr>
+                <tr><td>КК</td><td class="num">+2.0 п.п.</td><td class="num">+0.3 п.п.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="grid-2 mt">
+          <div class="callout ok">
+            <strong>Вывод по ПК</strong>
+            +0.7 п.п. Gini на OOT и +1.2 на train. Сигнал переносится во времени, слабее ОКВЭД-flat (+1.2 OOT), устойчивее hierarchical (0 на OOT).
+          </div>
+          <div class="callout warn">
+            <strong>Вывод по КК</strong>
+            На OOT +0.3, на train +2.0. Эффект меньше и менее стабилен: выборка КК меньше. Train-прирост сам по себе не аргумент.
+          </div>
+        </div>
+        <div class="callout bad mt-sm">
+          <strong>ПК и КК нельзя учить совместно</strong>
+          Та же причина, что у ОКВЭД: слишком большая разница в масштабе loss.
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>3. Почему не сработали более ранние эксперименты</h2>
+        <p class="mt-sm">До residual-постановки проверяли четыре подхода «в лоб». Ни один не дал устойчивого прироста к готовому boost score.</p>
+        <div class="grid-2 mt grow">
+          <div class="card">
+            <h3>Категория прямо в CatBoost</h3>
+            <p>Полные коды и регионы высококардинальны и неравномерны. Для редкого значения наблюдений недостаточно, чтобы оценить отдельный эффект.</p>
+          </div>
+          <div class="card">
+            <h3>Нейросеть без boost score</h3>
+            <p>Сеть видит только отрасль или регион и не видит персональный риск, который бустинг уже извлек из дохода и платежной дисциплины.</p>
+          </div>
+          <div class="card">
+            <h3>FMM — смесь распределений</h3>
+            <p><span class="code">P(y) = Σ π_k · P(y | группа k)</span>. Это безусловный PD группы. Большая часть сигнала уже в boost score. Прироста не было.</p>
+          </div>
+          <div class="card">
+            <h3>Factorization machines</h3>
+            <p><span class="code">ŷ = w₀ + Σ wᵢxᵢ + Σ ⟨vᵢ, vⱼ⟩ xᵢxⱼ</span>. Для редкого кода вектор v почти не оценивается. Прироста тоже не было.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <h2>Поэтому остались две residual-ветки</h2>
+        <div class="callout warn mt">
+          <strong>Все четыре подхода конкурируют с бустингом</strong>
+          FMM отвечает: «насколько группа в среднем плохая». FM отвечает: «с какими признаками код пересекается». Residual-сеть отвечает иначе: «насколько этот ОКВЭД или эта пара регионов меняет шансы сверх уже учтенного скора».
+        </div>
+        <div class="callout mt">
+          <strong>Нужная постановка</strong>
+          ОКВЭД и регион объясняют только Δ к log-odds готовой модели. Без этой постановки ранние эксперименты забирали сигнал, который бустинг уже умеет.
+        </div>
+        <div class="grid-3 mt grow" style="align-content:start">
+          <div class="stat ok"><b>+1.2</b><span>ПК OOT, ОКВЭД flat</span></div>
+          <div class="stat info"><b>+0.7</b><span>ПК OOT, регион</span></div>
+          <div class="stat warn"><b>0</b><span>ПК OOT, hierarchical</span></div>
+        </div>
+      </section>
+      <div class="hud">
+        <span>← → пробел · F полноэкран · P печать в PDF</span>
+        <span id="pos">1 / 13</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const pos = document.getElementById("pos");
+    let i = 0;
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, k) => s.classList.toggle("active", k === i));
+      pos.textContent = (i + 1) + " / " + slides.length;
+      location.hash = "s" + (i + 1);
+    }
+    function fromHash() {
+      const m = /s(\d+)/.exec(location.hash || "");
+      show(m ? Number(m[1]) - 1 : 0);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); show(i + 1); }
+      if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); show(i - 1); }
+      if (e.key === "Home") show(0);
+      if (e.key === "End") show(slides.length - 1);
+      if (e.key === "f" || e.key === "F") {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+      }
+      if (e.key === "p" || e.key === "P") window.print();
+    });
+    document.getElementById("deck").addEventListener("click", (e) => {
+      const x = e.clientX / window.innerWidth;
+      if (x > 0.72) show(i + 1);
+      else if (x < 0.28) show(i - 1);
+    });
+    window.addEventListener("hashchange", fromHash);
+    fromHash();
+  </script>
+</body>
+</html>
