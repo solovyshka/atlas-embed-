@@ -3,26 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Residual-эмбеддинги поверх готового риск-скора</title>
+  <title>Residual-эмбеддинги поверх готового риск-скора (тёмная)</title>
   <style>
     :root {
-      --bg: #eceae4;
-      --slide: #fbfaf7;
-      --ink: #1b1b1b;
-      --muted: #5a5a56;
-      --line: #d4d0c6;
-      --fill: #e8e4da;
-      --accent: #1f4e79;
-      --ok: #1b6b45;
-      --warn: #8a5a10;
-      --bad: #8b2c2c;
-      --formula: #eef2f6;
+      --bg: #101012;
+      --slide: #17171b;
+      --ink: #eceae4;
+      --muted: #a8a59c;
+      --line: #3a3a42;
+      --fill: #24242a;
+      --accent: #7eb0d6;
+      --ok: #6ec89a;
+      --warn: #d4a04a;
+      --bad: #e07a7a;
+      --formula: #1f1f26;
+      --surface: #1e1e24;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       height: 100%;
-      background: #111;
+      background: #0b0b0d;
       color: var(--ink);
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     }
@@ -94,7 +95,7 @@
       font-size: 1.05rem;
     }
     .card {
-      background: #fff;
+      background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 0.9rem 1rem;
@@ -106,7 +107,7 @@
       border-left: 5px solid var(--accent);
       border-radius: 8px;
       padding: 0.75rem 0.95rem;
-      background: #fff;
+      background: var(--surface);
     }
     .callout.ok { border-left-color: var(--ok); }
     .callout.warn { border-left-color: var(--warn); }
@@ -124,7 +125,7 @@
       text-align: center;
       padding: 0.5rem;
     }
-    .node.hi { background: #e4edf6; border-color: var(--accent); }
+    .node.hi { background: #243445; border-color: var(--accent); }
     .node b { font-size: 0.92rem; }
     .node span { color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
     .arrow {
@@ -176,7 +177,7 @@
       width: 100%;
       border-radius: 3px 3px 0 0;
     }
-    .bar.train { background: #c5c0b4; }
+    .bar.train { background: #6d6a62; }
     .bar.oot { background: var(--accent); }
     .legend { display: flex; gap: 1rem; justify-content: flex-end; font-size: 0.8rem; color: var(--muted); }
     .sw { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; }
@@ -186,18 +187,18 @@
     .graph {
       flex: 1;
       min-height: 0;
-      background: #fff;
+      background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 0.35rem 0.5rem 0.2rem;
     }
     .graph svg { width: 100%; height: 100%; display: block; }
     .gbox { fill: var(--fill); stroke: var(--line); }
-    .gbox.hi { fill: #e4edf6; stroke: var(--accent); }
+    .gbox.hi { fill: #243445; stroke: var(--accent); }
     .gtitle { fill: var(--ink); font-size: 12px; font-weight: 600; text-anchor: middle; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
     .gsub { fill: var(--muted); font-size: 12px; text-anchor: middle; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
     .gcap { fill: var(--muted); font-size: 11px; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
-    .gline { stroke: #4a4a46; stroke-width: 1.5; fill: none; }
+    .gline { stroke: #c8c5bb; stroke-width: 1.5; fill: none; }
     .code {
       font-family: ui-monospace, Menlo, Consolas, monospace;
       background: var(--fill);
@@ -216,7 +217,7 @@
       pointer-events: none;
     }
     @media print {
-      html, body, .stage { height: auto; background: white; }
+      html, body, .stage { height: auto; background: #0b0b0d; }
       .hud { display: none; }
       .deck {
         width: auto;
@@ -340,7 +341,7 @@
           <svg viewBox="0 0 1000 430" role="img" aria-label="Flat OKVED residual network">
             <defs>
               <marker id="arr-flat" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#4a4a46" />
+                <path d="M0,0 L8,4 L0,8 Z" fill="#c8c5bb" />
               </marker>
             </defs>
             <text class="gcap" x="22" y="32">Входы</text>
@@ -414,7 +415,7 @@
           <svg viewBox="0 0 1000 430" role="img" aria-label="Hierarchical OKVED residual network">
             <defs>
               <marker id="arr-hier" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#4a4a46" />
+                <path d="M0,0 L8,4 L0,8 Z" fill="#c8c5bb" />
               </marker>
             </defs>
             <text class="gcap" x="22" y="32">Входы</text>
@@ -496,8 +497,8 @@
         <h2>ОКВЭД — результаты Gini</h2>
         <p class="mt-sm">Только ОКВЭД-ветки. Hierarchical на ПК OOT = 0.</p>
         <div class="legend mt-sm">
-          <span><span class="sw" style="background:#c5c0b4"></span>Train, п.п. Gini</span>
-          <span><span class="sw" style="background:#1f4e79"></span>OOT, п.п. Gini</span>
+          <span><span class="sw" style="background:#6d6a62"></span>Train, п.п. Gini</span>
+          <span><span class="sw" style="background:#7eb0d6"></span>OOT, п.п. Gini</span>
         </div>
         <div class="grid-2 mt grow">
           <div>
@@ -588,7 +589,7 @@
           <svg viewBox="0 0 1000 430" role="img" aria-label="Regional residual network by layers">
             <defs>
               <marker id="arr-region" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#4a4a46" />
+                <path d="M0,0 L8,4 L0,8 Z" fill="#c8c5bb" />
               </marker>
             </defs>
             <text class="gcap" x="22" y="32">Входы</text>
@@ -668,8 +669,8 @@
       <section class="slide">
         <h2>Региональная модель — результаты и вывод</h2>
         <div class="legend mt-sm">
-          <span><span class="sw" style="background:#c5c0b4"></span>Train, п.п. Gini</span>
-          <span><span class="sw" style="background:#1f4e79"></span>OOT, п.п. Gini</span>
+          <span><span class="sw" style="background:#6d6a62"></span>Train, п.п. Gini</span>
+          <span><span class="sw" style="background:#7eb0d6"></span>OOT, п.п. Gini</span>
         </div>
         <div class="row mt">
           <div style="flex:1.1">
